@@ -1,76 +1,86 @@
 // lib/services/download_service.dart
-
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import '../models/download_state.dart';
 
 class DownloadService {
   Future<void> downloadVideo(
-      String tiktokUrl, void Function(AsyncValue<String>) updateState) async {
-    updateState(const AsyncValue.loading());
+      String tiktokUrl, void Function(DownloadProgress) updateProgress) async {
     try {
+      // Step 1: Start fetching video details
+      updateProgress(const DownloadProgress(
+        status: DownloadStatus.fetching,
+        message: 'Fetching video details...',
+        progress: 0.1,
+      ));
+
       print('DEBUG: Starting video download for URL: $tiktokUrl');
 
-      // Step 1: Call RapidAPI to get video details
-      print('DEBUG: Calling RapidAPI to fetch video details...');
+      // Call RapidAPI to get video details
       final apiResponse = await http.get(
         Uri.parse(
           'https://tiktok-download-without-watermark.p.rapidapi.com/analysis?url=$tiktokUrl&hd=1',
         ),
         headers: {
           'X-RapidAPI-Key':
-              '1b5bb662eamsh11110cdca03efa6p132479jsn76102bf53807', // Replace with your key
+              // '1b5bb662eamsh11110cdca03efa6p132479jsn76102bf53807',
+              '58f8f3a841msha06b9e7847738bep132d02jsn2779b2309bc2',
           'X-RapidAPI-Host': 'tiktok-download-without-watermark.p.rapidapi.com',
         },
       );
 
-      print('DEBUG: API Response Status Code: ${apiResponse.statusCode}');
-      print('DEBUG: API Response Body: ${apiResponse.body}');
-
       if (apiResponse.statusCode != 200) {
-        throw Exception('Failed to fetch video URL: ${apiResponse.statusCode}');
+        throw Exception('Failed to fetch video details');
       }
+
+      updateProgress(const DownloadProgress(
+        status: DownloadStatus.fetching,
+        message: 'Processing video URL...',
+        progress: 0.3,
+      ));
 
       final data = (apiResponse.body.isNotEmpty)
           ? jsonDecode(apiResponse.body)['data'] as Map<String, dynamic>
           : {};
       final videoUrl = data['hdplay'] ?? data['play'];
 
-      print('DEBUG: Extracted video URL: $videoUrl');
-
       if (videoUrl == null) {
-        throw Exception('No downloadable video URL found');
+        throw Exception('No downloadable video found');
       }
 
-      // Step 2: Request appropriate storage permission based on Android version
+      // Step 2: Request storage permission
+      updateProgress(const DownloadProgress(
+        status: DownloadStatus.fetching,
+        message: 'Checking permissions...',
+        progress: 0.4,
+      ));
+
       if (Platform.isAndroid) {
-        print('DEBUG: Requesting storage permissions for Android...');
         bool hasPermission = await _requestStoragePermission();
         if (!hasPermission) {
-          throw Exception(
-              'Storage permission denied. Please grant storage permission in app settings.');
+          throw Exception('Storage permission required');
         }
-        print('DEBUG: Storage permission granted');
       }
 
       // Step 3: Get download path
-      print('DEBUG: Getting download directory...');
+      updateProgress(const DownloadProgress(
+        status: DownloadStatus.fetching,
+        message: 'Preparing download...',
+        progress: 0.5,
+      ));
+
       Directory? dir;
       if (Platform.isAndroid) {
-        // Try to get the Downloads directory first, fall back to external storage
         try {
           dir = Directory('/storage/emulated/0/Download');
           if (!await dir.exists()) {
-            print(
-                'DEBUG: Downloads directory not accessible, using external storage');
             dir = await getExternalStorageDirectory();
           }
         } catch (e) {
-          print('DEBUG: Error accessing Downloads directory: $e');
           dir = await getExternalStorageDirectory();
         }
       } else {
@@ -78,112 +88,94 @@ class DownloadService {
       }
 
       if (dir == null) {
-        throw Exception('Could not access storage directory');
+        throw Exception('Could not access storage');
       }
-
-      print('DEBUG: Download directory: ${dir.path}');
 
       final fileName =
           'tiktok_video_${DateTime.now().millisecondsSinceEpoch}.mp4';
       final filePath = '${dir.path}/$fileName';
-      print('DEBUG: Full file path: $filePath');
 
-      // Step 4: Download the video
-      print('DEBUG: Starting video download from: $videoUrl');
-      final videoResponse = await http.get(Uri.parse(videoUrl));
+      // Step 4: Download with progress tracking
+      updateProgress(const DownloadProgress(
+        status: DownloadStatus.downloading,
+        message: 'Downloading video...',
+        progress: 0.6,
+      ));
 
-      print(
-          'DEBUG: Video download response status: ${videoResponse.statusCode}');
-      print('DEBUG: Video file size: ${videoResponse.bodyBytes.length} bytes');
+      final request = http.Request('GET', Uri.parse(videoUrl));
+      final response = await http.Client().send(request);
 
-      if (videoResponse.statusCode == 200) {
+      if (response.statusCode == 200) {
         final file = File(filePath);
-        await file.writeAsBytes(videoResponse.bodyBytes);
-        print('DEBUG: Video saved successfully at: $filePath');
+        final sink = file.openWrite();
 
-        // Verify file was created
+        int downloaded = 0;
+        final total = response.contentLength ?? 0;
+
+        await for (var chunk in response.stream) {
+          sink.add(chunk);
+          downloaded += chunk.length;
+
+          if (total > 0) {
+            final progress = 0.6 + (downloaded / total) * 0.3;
+            updateProgress(DownloadProgress(
+              status: DownloadStatus.downloading,
+              message:
+                  'Downloading... ${((downloaded / total) * 100).toInt()}%',
+              progress: progress,
+            ));
+          }
+        }
+
+        await sink.close();
+
+        // Verify file creation
         if (await file.exists()) {
-          final fileSize = await file.length();
-          print('DEBUG: Verified file exists with size: $fileSize bytes');
-          updateState(AsyncValue.data(filePath));
+          updateProgress(DownloadProgress(
+            status: DownloadStatus.completed,
+            message: 'Download completed!',
+            progress: 1.0,
+            filePath: filePath,
+          ));
         } else {
-          throw Exception('File was not created successfully');
+          throw Exception('Failed to save file');
         }
       } else {
-        throw Exception(
-            'Failed to download video: ${videoResponse.statusCode}');
+        throw Exception('Download failed');
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       print('DEBUG: Error occurred: $e');
-      print('DEBUG: Stack trace: $stackTrace');
-      updateState(AsyncValue.error(e, stackTrace));
+      updateProgress(DownloadProgress(
+        status: DownloadStatus.error,
+        message: 'Download failed',
+        error: e.toString(),
+      ));
     }
   }
 
   Future<bool> _requestStoragePermission() async {
     try {
-      // Get Android version
       final deviceInfo = DeviceInfoPlugin();
       final androidInfo = await deviceInfo.androidInfo;
       final sdkInt = androidInfo.version.sdkInt;
 
-      print('DEBUG: Android SDK version: $sdkInt');
-
       if (sdkInt >= 33) {
-        // Android 13+ (API level 33+) - Use scoped storage
-        print('DEBUG: Using scoped storage for Android 13+');
-
-        // For Android 13+, we don't need WRITE_EXTERNAL_STORAGE permission
-        // We can write to app-specific external storage without permission
-        // Or request MANAGE_EXTERNAL_STORAGE for broader access
-
         final manageStorageStatus =
             await Permission.manageExternalStorage.status;
-        print('DEBUG: Manage external storage status: $manageStorageStatus');
-
         if (manageStorageStatus.isGranted) {
           return true;
         }
-
-        // Request manage external storage permission
         final result = await Permission.manageExternalStorage.request();
-        print('DEBUG: Manage external storage request result: $result');
-
         if (result.isGranted) {
           return true;
         }
-
-        // If manage external storage is denied, we can still use app-specific directory
-        print('DEBUG: Using app-specific external storage directory');
-        return true;
-      } else if (sdkInt >= 30) {
-        // Android 11-12 (API level 30-32)
-        print('DEBUG: Using storage permissions for Android 11-12');
-
-        final storageStatus = await Permission.storage.status;
-        print('DEBUG: Storage permission status: $storageStatus');
-
-        if (storageStatus.isGranted) {
-          return true;
-        }
-
-        final result = await Permission.storage.request();
-        print('DEBUG: Storage permission request result: $result');
-        return result.isGranted;
+        return true; // Use app-specific directory
       } else {
-        // Android 10 and below
-        print(
-            'DEBUG: Using legacy storage permissions for Android 10 and below');
-
         final storageStatus = await Permission.storage.status;
-        print('DEBUG: Storage permission status: $storageStatus');
-
         if (storageStatus.isGranted) {
           return true;
         }
-
         final result = await Permission.storage.request();
-        print('DEBUG: Storage permission request result: $result');
         return result.isGranted;
       }
     } catch (e) {
