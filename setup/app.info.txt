@@ -1,0 +1,13 @@
+OK, I want to create a Flutter app.where it will be an app where I will be using a rapid api 
+for now it will be just a downloader for tiktok videos without much so I will be downloading
+ from that and this app we will be downloading videos from a URL that will be from tiktok like we will give it 
+ a tiktok video URL and it will download that video for first of all it will also download video we should also be
+downloading videos to our phone local storage number two it should be some for now and just focusing on tik-tok later on
+ we will be implementing other features also like we will be also having insta videos download and everything in this
+ one app but for now we will be just focusing on one platform which is tik-tok so help me with that and details
+
+
+
+ Tiktok Download Without Watermark
+
+ 
