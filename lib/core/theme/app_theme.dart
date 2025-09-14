@@ -1,8 +1,7 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
+// lib/core/theme/app_theme.dart
 
-final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.light);
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // Base colors

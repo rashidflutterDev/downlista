@@ -1,15 +1,19 @@
-// lib/services/download_service.dart
+// lib/features/download/download_state.dart
 import 'dart:convert';
 import 'dart:io';
+import 'package:downlista/core/models/app_failure.dart';
+import 'package:downlista/features/download/download_state.dart';
+import 'package:fpdart/fpdart.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import '../models/download_state.dart';
 
-class DownloadService {
-  Future<void> downloadVideo(
-      String tiktokUrl, void Function(DownloadProgress) updateProgress) async {
+class DownloadRepository {
+  Future<Either<AppFailure, DownloadProgress>> downloadVideo(
+    String tiktokUrl,
+    void Function(DownloadProgress) updateProgress,
+  ) async {
     try {
       // Step 1: Start fetching video details
       updateProgress(const DownloadProgress(
@@ -18,8 +22,6 @@ class DownloadService {
         progress: 0.1,
       ));
 
-      print('DEBUG: Starting video download for URL: $tiktokUrl');
-
       // Call RapidAPI to get video details
       final apiResponse = await http.get(
         Uri.parse(
@@ -27,14 +29,13 @@ class DownloadService {
         ),
         headers: {
           'X-RapidAPI-Key':
-              // '1b5bb662eamsh11110cdca03efa6p132479jsn76102bf53807',
               '58f8f3a841msha06b9e7847738bep132d02jsn2779b2309bc2',
           'X-RapidAPI-Host': 'tiktok-download-without-watermark.p.rapidapi.com',
         },
       );
 
       if (apiResponse.statusCode != 200) {
-        throw Exception('Failed to fetch video details');
+        return left(AppFailure('Failed to fetch video details'));
       }
 
       updateProgress(const DownloadProgress(
@@ -49,7 +50,7 @@ class DownloadService {
       final videoUrl = data['hdplay'] ?? data['play'];
 
       if (videoUrl == null) {
-        throw Exception('No downloadable video found');
+        return left(AppFailure('No downloadable video found'));
       }
 
       // Step 2: Request storage permission
@@ -62,7 +63,7 @@ class DownloadService {
       if (Platform.isAndroid) {
         bool hasPermission = await _requestStoragePermission();
         if (!hasPermission) {
-          throw Exception('Storage permission required');
+          return left(AppFailure('Storage permission required'));
         }
       }
 
@@ -88,7 +89,7 @@ class DownloadService {
       }
 
       if (dir == null) {
-        throw Exception('Could not access storage');
+        return left(AppFailure('Could not access storage'));
       }
 
       final fileName =
@@ -131,25 +132,20 @@ class DownloadService {
 
         // Verify file creation
         if (await file.exists()) {
-          updateProgress(DownloadProgress(
+          return right(DownloadProgress(
             status: DownloadStatus.completed,
             message: 'Download completed!',
             progress: 1.0,
             filePath: filePath,
           ));
         } else {
-          throw Exception('Failed to save file');
+          return left(AppFailure('Failed to save file'));
         }
       } else {
-        throw Exception('Download failed');
+        return left(AppFailure('Download failed'));
       }
     } catch (e) {
-      print('DEBUG: Error occurred: $e');
-      updateProgress(DownloadProgress(
-        status: DownloadStatus.error,
-        message: 'Download failed',
-        error: e.toString(),
-      ));
+      return left(AppFailure(e.toString()));
     }
   }
 
@@ -179,7 +175,6 @@ class DownloadService {
         return result.isGranted;
       }
     } catch (e) {
-      print('DEBUG: Error requesting storage permission: $e');
       return false;
     }
   }

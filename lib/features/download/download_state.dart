@@ -1,6 +1,4 @@
-// lib/models/download_state.dart
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
+// lib/features/download/download_state.dart
 enum DownloadStatus {
   idle,
   fetching,
@@ -37,25 +35,6 @@ class DownloadProgress {
       progress: progress ?? this.progress,
       filePath: filePath ?? this.filePath,
       error: error ?? this.error,
-    );
-  }
-}
-
-class DownloadState extends StateNotifier<DownloadProgress> {
-  DownloadState()
-      : super(const DownloadProgress(
-          status: DownloadStatus.idle,
-          message: 'Ready to download',
-        ));
-
-  void updateProgress(DownloadProgress progress) {
-    state = progress;
-  }
-
-  void reset() {
-    state = const DownloadProgress(
-      status: DownloadStatus.idle,
-      message: 'Ready to download',
     );
   }
 }
