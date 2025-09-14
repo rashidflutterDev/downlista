@@ -59,7 +59,7 @@ class _VideoDownloadScreenState extends ConsumerState<VideoDownloadScreen> {
               controller: _urlController,
               decoration: InputDecoration(
                 hintText: 'Paste video URL here...',
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
                 prefixIcon: Icon(Icons.link, color: primaryColor),
               ),
             ),
@@ -80,8 +80,13 @@ class _VideoDownloadScreenState extends ConsumerState<VideoDownloadScreen> {
                     return const SizedBox.shrink();
                   },
                   loading: () => const CircularProgressIndicator(),
-                  error: (error, st) => Text('Error: $error',
-                      style: GoogleFonts.poppins(color: Colors.red)),
+                  error: (error, st) {
+                    debugPrint(error.toString());
+                    return
+                        // =>
+                        Text('Error: $error',
+                            style: GoogleFonts.poppins(color: Colors.red));
+                  },
                 ),
           ],
         ),
